@@ -13,6 +13,8 @@ import asyncio
 import shutil
 from pathlib import Path
 from dotenv import load_dotenv
+import time
+import psutil
 
 load_dotenv()
 
@@ -335,6 +337,17 @@ async def startup_event():
             await asyncio.sleep(3600)  # Check every hour
 
     asyncio.create_task(cleanup_old_files())
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    START_TIME = time.time()
+    return {
+        "status": "healthy",
+        "uptime": int(time.time() - START_TIME),
+        "timestamp": datetime.now().isoformat(),
+        "memory_usage": f"{psutil.Process().memory_info().rss / 1024 / 1024:.2f}MB"
+    }
 
 if __name__ == "__main__":
     import uvicorn

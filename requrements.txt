@@ -12,3 +12,4 @@ python-jose
 passlib
 bcrypt
 asyncio
+psutil
