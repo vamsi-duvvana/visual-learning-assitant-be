@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+openai
+python-dotenv
+aiofiles
+pathlib
+pillow
+httpx
+python-jose
+passlib
+bcrypt
+asyncio
+psutil
