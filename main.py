@@ -36,14 +36,18 @@ TEMP_DIR = Path("temp")
 TEMP_DIR.mkdir(exist_ok=True)
 
 # Models for request/response
+
+
 class DoubtSession(BaseModel):
     timestamp: str
     image_analysis: str
     context: str
     solution: str
 
+
 # In-memory session storage
 sessions: dict[str, list[DoubtSession]] = {}
+
 
 async def save_session(user_id: str, doubt_data: dict):
     """Save doubt session to memory"""
@@ -51,11 +55,12 @@ async def save_session(user_id: str, doubt_data: dict):
         timestamp=datetime.now().isoformat(),
         **doubt_data
     )
-    
+
     if user_id not in sessions:
         sessions[user_id] = []
-    
+
     sessions[user_id].append(session)
+
 
 async def get_text_from_audio(audio_path: str) -> Optional[str]:
     """Convert audio to text using Whisper"""
@@ -71,6 +76,7 @@ async def get_text_from_audio(audio_path: str) -> Optional[str]:
     except Exception as e:
         print(f"Error in audio transcription: {e}")
         return None
+
 
 async def analyze_image(image_data: bytes) -> Optional[str]:
     """Analyze image using OpenAI Vision"""
@@ -103,6 +109,7 @@ async def analyze_image(image_data: bytes) -> Optional[str]:
         print(f"Error in image analysis: {e}")
         return None
 
+
 async def generate_solution(image_analysis: str, context: str) -> Optional[str]:
     """Generate solution using GPT-4"""
     try:
@@ -112,11 +119,45 @@ async def generate_solution(image_analysis: str, context: str) -> Optional[str]:
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a concise educational assistant. Provide clear, focused explanations in 2-3 steps. Focus on key concepts and essential steps."
+                    "content": """You are an expert educational AI assistant specialized in breaking down complex topics into simple steps.
+
+                        Your responses must:
+                        - Start with a brief overview of the topic
+                        - Provide 3-4 clear, actionable steps
+                        - Include relevant examples or analogies
+                        - Use concise, clear language suitable for the user's level
+                        - Focus on foundational concepts first
+
+                        Your expertise covers:
+                        - Academic subjects (math, science, programming)
+                        - Study skills and learning strategies
+                        - Problem-solving methodologies
+                        - Technical concepts and processes
+
+                        Keep responses focused, practical, and under 200 words unless specifically asked for more detail. If a topic is unclear, ask clarifying questions before providing an explanation."""
                 },
                 {
                     "role": "user",
-                    "content": f"Image contains: {image_analysis}\nStudent's context: {context}\nProvide a brief, focused solution in under 5 steps."
+                    "content": f"""
+                        CONTEXT:
+                        - Image Analysis: {image_analysis}
+                        - Student Background: {context}
+
+                        REQUIREMENTS:
+                        - Analyze the image and student context provided above
+                        - Break down the solution into 2-4 clear steps
+                        - Focus on core concepts relevant to the student's level
+                        - Include a brief explanation for each step
+                        - If the problem involves calculations, show key steps
+
+                        FORMAT:
+                        - Start with a one-line summary
+                        - Number each step clearly
+                        - Use simple, precise language
+                        - Include relevant formulas or key terms
+                        - End with a quick check for understanding
+
+                        Provide your solution following these guidelines, keeping it concise and focused."""
                 }
             ],
             max_tokens=500
@@ -125,6 +166,7 @@ async def generate_solution(image_analysis: str, context: str) -> Optional[str]:
     except Exception as e:
         print(f"Error generating solution: {e}")
         return None
+
 
 async def generate_voice_solution(text: str) -> Optional[str]:
     """Generate voice solution using OpenAI TTS"""
@@ -135,7 +177,7 @@ async def generate_voice_solution(text: str) -> Optional[str]:
             voice="alloy",
             input=text
         )
-        
+
         # Save the audio file
         output_path = TEMP_DIR / f"solution_{datetime.now().timestamp()}.mp3"
         response.stream_to_file(str(output_path))
@@ -143,6 +185,7 @@ async def generate_voice_solution(text: str) -> Optional[str]:
     except Exception as e:
         print(f"Error generating voice solution: {e}")
         return None
+
 
 @app.post("/solve_doubt")
 async def solve_doubt(
@@ -153,7 +196,7 @@ async def solve_doubt(
     try:
         # Process image
         image_data = base64.b64decode(image.split(',')[1])
-        
+
         # Process audio if present
         audio_text = ""
         if audio:
@@ -173,7 +216,7 @@ async def solve_doubt(
                 status_code=500,
                 content={"error": "Failed to analyze image"}
             )
-        
+
         # Generate solution
         text_solution = await generate_solution(image_analysis, context)
         if not text_solution:
@@ -181,10 +224,10 @@ async def solve_doubt(
                 status_code=500,
                 content={"error": "Failed to generate solution"}
             )
-        
+
         # Generate voice solution
         voice_solution_path = await generate_voice_solution(text_solution)
-        
+
         # Save session data
         await save_session(
             'user123',  # Replace with actual user ID
@@ -206,20 +249,21 @@ async def solve_doubt(
             content={"error": str(e)}
         )
 
+
 @app.post("/analyze-doubt")
 async def analyze_doubt(image: UploadFile = File(...), doubt: str = Form(...)):
     try:
         # Create temp file path
         temp_file = TEMP_DIR / f"upload_{datetime.now().timestamp()}.png"
-        
+
         # Save uploaded file
         with temp_file.open("wb") as buffer:
             shutil.copyfileobj(image.file, buffer)
-            
+
         # Encode image
         with open(temp_file, "rb") as image_file:
             base64_image = base64.b64encode(image_file.read()).decode('utf-8')
-            
+
         # Call Vision API
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
@@ -228,32 +272,34 @@ async def analyze_doubt(image: UploadFile = File(...), doubt: str = Form(...)):
                     "role": "user",
                     "content": [
                         {"type": "text", "text": f"Analyze this image and answer: {doubt}"},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}"}}
+                        {"type": "image_url", "image_url": {
+                            "url": f"data:image/png;base64,{base64_image}"}}
                     ]
                 }
             ],
             max_tokens=500
         )
-        
+
         analysis = response.choices[0].message.content
-        
+
         # Create session record
         session = DoubtSession(
             timestamp=datetime.now().isoformat(),
             image_analysis=analysis,
             context=doubt
         )
-        
+
         # Cleanup
         temp_file.unlink()
-        
+
         return JSONResponse(content={"analysis": analysis})
-        
+
     except Exception as e:
         return JSONResponse(
             status_code=500,
             content={"error": str(e)}
         )
+
 
 @app.get("/audio/{filename}")
 async def get_audio(filename: str):
@@ -266,6 +312,7 @@ async def get_audio(filename: str):
         )
     return FileResponse(str(file_path))
 
+
 @app.get("/sessions/{user_id}")
 async def get_user_sessions(user_id: str):
     """Get all sessions for a user"""
@@ -274,6 +321,8 @@ async def get_user_sessions(user_id: str):
     return sessions[user_id]
 
 # Cleanup old files periodically
+
+
 @app.on_event("startup")
 async def startup_event():
     async def cleanup_old_files():
